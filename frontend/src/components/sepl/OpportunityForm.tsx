@@ -56,6 +56,18 @@ const INDIA_STATES: Record<string, string[]> = {
 };
 
 const REQUIREMENT_TYPES = ['Cloud', 'Software', 'License', 'Hardware', 'Turnkey', 'Manpower/Consulting', 'Hardware with Licenses'];
+const TENDER_PRODUCT_OPTIONS = ['Cloud', 'Hardware', 'Licenses', 'Development', 'Security'];
+
+const getTenderProductOptionValue = (value?: string): string => {
+  const trimmedValue = `${value || ''}`.trim();
+  return TENDER_PRODUCT_OPTIONS.find((option) => option.toLowerCase() === trimmedValue.toLowerCase()) || '';
+};
+
+const splitTenderProductNames = (value?: string): string[] =>
+  `${value || ''}`
+    .split(',')
+    .map(getTenderProductOptionValue)
+    .filter(Boolean);
 
 // Keep numeric inputs clean (digits and a single dot)
 const sanitizeNumberInput = (value: string): string => {
@@ -74,6 +86,13 @@ interface Product {
 interface OEM {
   id: number;
   name: string;
+}
+
+interface TenderRequirementItem {
+  id: string;
+  productName: string;
+  oemName: string;
+  quantity: number;
 }
 
 interface OIC {
@@ -181,11 +200,13 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
   const [oics, setOICs] = useState<OIC[]>([]);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [showNewProduct, setShowNewProduct] = useState(false);
   const [showNewOIC, setShowNewOIC] = useState(false);
-  const [newProductName, setNewProductName] = useState('');
+  const [tenderRequirementItems, setTenderRequirementItems] = useState<TenderRequirementItem[]>([]);
+  const [tenderRequirementsTouched, setTenderRequirementsTouched] = useState(false);
   const [newOICName, setNewOICName] = useState('');
   const [newOICCustomerId, setNewOICCustomerId] = useState(0);
+  const [newOICCustomerQuery, setNewOICCustomerQuery] = useState('');
+  const [showOICCustomerDropdown, setShowOICCustomerDropdown] = useState(false);
   const [newOICContact, setNewOICContact] = useState('');
   const [newOICEmail, setNewOICEmail] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -197,6 +218,24 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
   const [currentRemarkInput, setCurrentRemarkInput] = useState('');
   const [originalRemarks, setOriginalRemarks] = useState('');
   const customerDropdownRef = useRef<HTMLDivElement | null>(null);
+  const oicCustomerDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const buildTenderRequirementItems = (source: Opportunity): TenderRequirementItem[] => {
+    const productNames = splitTenderProductNames(source.product_name);
+
+    return productNames.map((productName, index) => ({
+      id: `existing-${index}`,
+      productName,
+      oemName: '',
+      quantity: 0,
+    })).filter((item) => item.productName);
+  };
+
+  const serializeTenderRequirementItems = (items: TenderRequirementItem[]) => ({
+    product_name: items.map((item) => item.productName).filter(Boolean).join(', '),
+    oem_name: '',
+    quantity: 0,
+  });
 
   useEffect(() => {
     loadMasters();
@@ -211,9 +250,13 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
         created_date: formatDateForInput(opportunity.created_date),
       };
       setFormData(formattedData);
+      setTenderRequirementItems(buildTenderRequirementItems(formattedData));
+      setTenderRequirementsTouched(false);
       setOriginalRemarks(opportunity.remarks || '');
       setCurrentRemarkInput('');
     } else {
+      setTenderRequirementItems([]);
+      setTenderRequirementsTouched(false);
       setOriginalRemarks('');
       setCurrentRemarkInput('');
     }
@@ -226,6 +269,13 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
         !customerDropdownRef.current.contains(event.target as Node)
       ) {
         setShowCustomerDropdown(false);
+      }
+
+      if (
+        oicCustomerDropdownRef.current &&
+        !oicCustomerDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowOICCustomerDropdown(false);
       }
     };
 
@@ -258,24 +308,23 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
     }
   };
 
-  const handleAddProduct = async () => {
-    if (!newProductName.trim()) return;
-    try {
-      // Save to database
-      const response = await seplApi.createProduct({ name: newProductName });
-      const newProduct: Product = {
-        id: response.data.id,
-        name: newProductName,
-      };
-      setProducts([...safeProducts, newProduct]);
-      // Set the new product as selected
-      setFormData({ ...formData, product_name: newProductName });
-      setShowNewProduct(false);
-      setNewProductName('');
-    } catch (err) {
-      console.error('Error adding product:', err);
-      alert('Failed to add product. Please try again.');
-    }
+  const handleAddProduct = () => {
+    const selectedProductName = getTenderProductOptionValue(formData.product_name);
+    if (!selectedProductName) return;
+
+    const newTenderRequirementItem: TenderRequirementItem = {
+      id: `${Date.now()}-${selectedProductName}`,
+      productName: selectedProductName,
+      oemName: '',
+      quantity: 0,
+    };
+
+    setTenderRequirementItems((currentItems) => {
+      const alreadyAdded = currentItems.some((item) => item.productName.toLowerCase() === selectedProductName.toLowerCase());
+      return alreadyAdded ? currentItems : [...currentItems, newTenderRequirementItem];
+    });
+    setTenderRequirementsTouched(true);
+    setFormData((currentFormData) => ({ ...currentFormData, product_name: '', oem_name: '', quantity: 0 }));
   };
 
   const handleAddOIC = async () => {
@@ -283,8 +332,41 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
       alert('OIC name is required');
       return;
     }
-    if (!newOICCustomerId) {
-      alert('Please select a customer for the OIC');
+    let customerId = newOICCustomerId;
+    let customerName = customers.find((c) => c.id === customerId)?.name || '';
+
+    if (!customerId && newOICCustomerQuery.trim()) {
+      const exactMatch = customers.find(
+        (c) => c.name.trim().toLowerCase() === newOICCustomerQuery.trim().toLowerCase()
+      );
+      if (exactMatch) {
+        customerId = exactMatch.id;
+        customerName = exactMatch.name;
+      } else {
+        try {
+          const createdCustomerResp = await seplApi.createCustomer({
+            name: newOICCustomerQuery.trim(),
+            alias: '',
+          });
+          const createdCustomerPayload = createdCustomerResp?.data?.data || createdCustomerResp?.data || {};
+          const createdCustomer: Customer = {
+            id: Number(createdCustomerPayload.id) || Date.now(),
+            name: `${createdCustomerPayload.name || createdCustomerPayload.customer_name || newOICCustomerQuery.trim()}`.trim(),
+            alias: `${createdCustomerPayload.alias || ''}`.trim(),
+          };
+          setCustomers((current) => [createdCustomer, ...(Array.isArray(current) ? current : [])]);
+          customerId = createdCustomer.id;
+          customerName = createdCustomer.name;
+        } catch (createCustomerErr) {
+          console.error('Error adding customer for OIC:', createCustomerErr);
+          alert('Failed to add customer. Please try again.');
+          return;
+        }
+      }
+    }
+
+    if (!customerId) {
+      alert('Please select or add a customer for the OIC');
       return;
     }
     
@@ -292,17 +374,15 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
       // Save to database
       const response = await seplApi.createOIC({
         name: newOICName,
-        customer_id: newOICCustomerId,
-        contact_no: newOICContact || null,
-        email: newOICEmail || null
+        customer_id: customerId,
+        contact_no: newOICContact || '',
+        email: newOICEmail || ''
       });
-      
-      const customerName = customers.find(c => c.id === newOICCustomerId)?.name || '';
       
       const newOIC: OIC = {
         id: response.data.id,
         name: newOICName,
-        customer_id: newOICCustomerId,
+        customer_id: customerId,
         customer_name: customerName,
         contact_no: newOICContact,
         email: newOICEmail
@@ -313,6 +393,8 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
       setShowNewOIC(false);
       setNewOICName('');
       setNewOICCustomerId(0);
+      setNewOICCustomerQuery('');
+      setShowOICCustomerDropdown(false);
       setNewOICContact('');
       setNewOICEmail('');
       
@@ -426,6 +508,10 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
         setSaving(false);
         return;
       }
+
+      const serializedTenderRequirements = tenderRequirementItems.length > 0 || tenderRequirementsTouched
+        ? serializeTenderRequirementItems(tenderRequirementItems)
+        : null;
       
       // Build clean object without title, reference_number, client_name
       const cleanData: any = {
@@ -449,13 +535,13 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
         ra_type: formData.ra_type,
         emd: formData.emd,
         emd_value: formData.emd_value,
-        emd_exemption: formData.emd_exemption,
+        emd_exemption: formData.emd_exemption === 'exemption' ? 1 : 0,
         epbg: formData.epbg,
         epbg_value: formData.epbg_value,
         tender_fees: formData.tender_fees,
-        product_name: formData.product_name,
-        oem_name: formData.oem_name,
-        quantity: formData.quantity,
+        product_name: serializedTenderRequirements?.product_name ?? splitTenderProductNames(formData.product_name).join(', '),
+        oem_name: serializedTenderRequirements?.oem_name ?? '',
+        quantity: serializedTenderRequirements?.quantity ?? 0,
         oic_name: formData.oic_name,
         remarks: formData.remarks,
         created_date: formData.created_date,
@@ -496,6 +582,10 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
   const safeRequirementTypes = REQUIREMENT_TYPES || [];
   const safeStateOptions = stateOptions || [];
   const safeCityOptions = cityOptions || [];
+  const filteredOICCustomers = (customers || []).filter((customer) =>
+    `${customer?.name || ''}`.toLowerCase().includes(newOICCustomerQuery.toLowerCase()) ||
+    `${customer?.alias || ''}`.toLowerCase().includes(newOICCustomerQuery.toLowerCase())
+  );
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -611,61 +701,6 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
               </div>
             </div>
           </section>
-
-          {/* Add New Customer Inline */}
-          {showNewCustomer && (
-            <div className="border-2 border-blue-300 rounded-lg p-4 bg-blue-100">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">New Customer Name</label>
-                  <input
-                    type="text"
-                    value={newCustomerName}
-                    onChange={(e) => setNewCustomerName(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Alias</label>
-                  <input
-                    type="text"
-                    value={newCustomerAlias}
-                    onChange={(e) => setNewCustomerAlias(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2 mt-3">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!newCustomerName.trim()) return;
-                    try {
-                      const resp = await seplApi.createCustomer({ name: newCustomerName.trim(), alias: newCustomerAlias.trim() });
-                      const created: Customer = resp?.data || { id: Date.now(), name: newCustomerName.trim(), alias: newCustomerAlias.trim() };
-                      setCustomers([created, ...(customers || [])]);
-                      setFormData({ ...formData, customer_name: created.name, customer_alias: created.alias || '' });
-                      setNewCustomerName('');
-                      setNewCustomerAlias('');
-                      setShowNewCustomer(false);
-                    } catch (e) {
-                      setErrors({ form: (e as any)?.response?.data?.error || 'Failed to add customer' });
-                    }
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  Add Customer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowNewCustomer(false)}
-                  className="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* 2. Tender Details */}
           <section className="border-2 border-purple-200 rounded-lg p-6 bg-purple-50">
@@ -925,90 +960,67 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
           {/* 3. Tender Requirements */}
           <section className="border-2 border-green-200 rounded-lg p-6 bg-green-50">
             <h3 className="text-lg font-bold text-green-900 mb-4">3. Tender Requirements</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-1 gap-4 mb-4">
               <div data-field="product_name">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Product / Service</label>
                 <select
                   value={formData.product_name || ''}
-                  onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
+                  onChange={(e) => {
+                    setFormData({ ...formData, product_name: e.target.value, oem_name: '', quantity: 0 });
+                  }}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${errors.product_name ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'}`}
                 >
                   <option value="">Select Product</option>
-                  {(safeProducts || []).map((p) => (
-                    <option key={p.id} value={p.name}>{p.name}</option>
+                  {TENDER_PRODUCT_OPTIONS.map((productName) => (
+                    <option key={productName} value={productName}>{productName}</option>
                   ))}
                 </select>
                 {errors.product_name && (
                   <p className="text-red-500 text-sm mt-1">{errors.product_name}</p>
                 )}
               </div>
-              <div data-field="oem_name">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">OEM</label>
-                <select
-                  value={formData.oem_name || ''}
-                  onChange={(e) => setFormData({ ...formData, oem_name: e.target.value })}
-                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${errors.oem_name ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'}`}
-                >
-                  <option value="">Select OEM</option>
-                  {(safeOems || []).map((o) => (
-                    <option key={o.id} value={o.name}>{o.name}</option>
-                  ))}
-                </select>
-                {errors.oem_name && (
-                  <p className="text-red-500 text-sm mt-1">{errors.oem_name}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Quantity</label>
-                <input
-                  type="number"
-                  value={formData.quantity || 0}
-                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
-                  onFocus={(e) => { if (e.target.value === '0') e.target.value = ''; }}
-                  min="0"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                />
-              </div>
             </div>
             <button
               type="button"
-              onClick={() => setShowNewProduct(true)}
+              onClick={handleAddProduct}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
             >
               <Plus className="w-4 h-4" />
               Add New Product
             </button>
-          </section>
 
-          {/* Add New Product Modal */}
-          {showNewProduct && (
-            <div className="border-2 border-green-300 rounded-lg p-4 bg-green-100">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={newProductName}
-                  onChange={(e) => setNewProductName(e.target.value)}
-                  placeholder="Enter new product name"
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddProduct}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowNewProduct(false)}
-                  className="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500"
-                >
-                  Cancel
-                </button>
+            {tenderRequirementItems.length > 0 && (
+              <div className="mt-4 overflow-x-auto rounded-lg border border-green-200 bg-white">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-green-50 text-green-900">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Product / Service</th>
+                      <th className="px-3 py-2 text-right font-semibold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tenderRequirementItems.map((item) => (
+                      <tr key={item.id} className="border-t border-green-100">
+                        <td className="px-3 py-2 text-gray-900">{item.productName}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTenderRequirementItems((currentItems) => currentItems.filter((currentItem) => currentItem.id !== item.id));
+                              setTenderRequirementsTouched(true);
+                            }}
+                            className="px-3 py-1 text-xs font-semibold text-red-700 hover:text-red-900"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </div>
-          )}
-
+            )}
+          </section>
           {/* 4. OIC Details */}
           <section className="border-2 border-indigo-200 rounded-lg p-6 bg-indigo-50">
             <h3 className="text-lg font-bold text-indigo-900 mb-2">4. OIC Details (Optional)</h3>
@@ -1050,18 +1062,43 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Customer *</label>
-                  <select
-                    value={newOICCustomerId}
-                    onChange={(e) => setNewOICCustomerId(parseInt(e.target.value))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value={0}>Select Customer</option>
-                    {customers.map((customer) => (
-                      <option key={customer.id} value={customer.id}>
-                        {customer.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative" ref={oicCustomerDropdownRef}>
+                    <input
+                      type="text"
+                      value={newOICCustomerQuery}
+                      onChange={(e) => {
+                        setNewOICCustomerQuery(e.target.value);
+                        setNewOICCustomerId(0);
+                        setShowOICCustomerDropdown(true);
+                      }}
+                      onFocus={() => setShowOICCustomerDropdown(true)}
+                      placeholder="Type to search or add customer"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                    {showOICCustomerDropdown && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                        {filteredOICCustomers.map((customer) => (
+                          <button
+                            key={customer.id || customer.name}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setNewOICCustomerId(customer.id);
+                              setNewOICCustomerQuery(customer.name);
+                              setShowOICCustomerDropdown(false);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-indigo-50 border-b border-gray-100"
+                          >
+                            <div className="text-sm font-medium text-gray-900">{customer.name || 'Unnamed Customer'}</div>
+                            {customer.alias && <div className="text-xs text-gray-500">{customer.alias}</div>}
+                          </button>
+                        ))}
+                        {filteredOICCustomers.length === 0 && newOICCustomerQuery.trim() && (
+                          <div className="px-3 py-2 text-xs text-gray-500">No customer found. Customer will be created when you add OIC.</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">OIC Name *</label>
@@ -1079,6 +1116,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                     type="text"
                     value={newOICContact}
                     onChange={(e) => setNewOICContact(e.target.value)}
+                    maxLength={12}
                     placeholder="Enter contact number"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                   />
@@ -1108,6 +1146,8 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                     setShowNewOIC(false);
                     setNewOICName('');
                     setNewOICCustomerId(0);
+                    setNewOICCustomerQuery('');
+                    setShowOICCustomerDropdown(false);
                     setNewOICContact('');
                     setNewOICEmail('');
                   }}
@@ -1188,16 +1228,6 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
             </button>
           </div>
         </form>
-      </div>
-      {/* Quick actions below modal */}
-      <div className="fixed bottom-4 right-4 flex gap-2">
-        <button
-          type="button"
-          onClick={() => setShowNewCustomer((v) => !v)}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700"
-        >
-          {showNewCustomer ? 'Hide New Customer' : 'Add New Customer'}
-        </button>
       </div>
     </div>
   );

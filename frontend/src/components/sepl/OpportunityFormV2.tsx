@@ -452,14 +452,6 @@ export function OpportunityFormV2({ onClose, onSave, opportunity, messageHandler
                           {c.alias && <div className="text-xs text-gray-500">{c.alias}</div>}
                         </button>
                       ))}
-                      <button
-                        type="button"
-                        onClick={() => setShowNewCustomer(true)}
-                        className="w-full px-4 py-2 text-blue-600 hover:bg-blue-50 flex items-center gap-2 font-medium"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Add New Customer
-                      </button>
                     </div>
                   )}
                 </div>
@@ -508,44 +500,6 @@ export function OpportunityFormV2({ onClose, onSave, opportunity, messageHandler
               </div>
             </div>
 
-            {/* New Customer Form */}
-            {showNewCustomer && (
-              <div className="mt-4 p-4 bg-white border border-blue-300 rounded-lg">
-                <h4 className="font-semibold text-gray-900 mb-3">Add New Customer</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input
-                    type="text"
-                    value={newCustomerName}
-                    onChange={(e) => setNewCustomerName(e.target.value)}
-                    placeholder="Customer Name *"
-                    className="px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <input
-                    type="text"
-                    value={newCustomerAlias}
-                    onChange={(e) => setNewCustomerAlias(e.target.value)}
-                    placeholder="Alias (Optional)"
-                    className="px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleAddCustomer}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                  >
-                    Add Customer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowNewCustomer(false)}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
           </section>
 
           {/* 2. Tender Details Section */}
