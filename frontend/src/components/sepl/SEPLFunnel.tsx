@@ -859,7 +859,7 @@ export function SEPLFunnel() {
                             </button>
                           </td>
                           <td className="px-3 py-4 text-center font-bold text-indigo-700 bg-indigo-50">
-                            {opp.id || index + 1}
+                            {index + 1}
                           </td>
                           <td className="px-4 py-4 text-sm font-medium text-gray-900 truncate">
                             {opp.customer_name}
@@ -1444,6 +1444,7 @@ export function SEPLFunnel() {
                   <label className="block text-sm font-semibold text-gray-700">Submission Date *</label>
                   <input
                     type="date"
+                    max="9999-12-31"
                     value={submissionDate}
                     onChange={(e) => setSubmissionDate(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"

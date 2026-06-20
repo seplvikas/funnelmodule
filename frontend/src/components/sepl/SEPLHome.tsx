@@ -219,6 +219,7 @@ export function SEPLHome() {
               <label className="block text-sm font-semibold text-gray-700 mb-2">Start Date</label>
               <input
                 type="date"
+                max="9999-12-31"
                 value={customStartDate}
                 onChange={(e) => setCustomStartDate(e.target.value)}
                 className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
@@ -232,6 +233,7 @@ export function SEPLHome() {
               <label className="block text-sm font-semibold text-gray-700 mb-2">End Date</label>
               <input
                 type="date"
+                max="9999-12-31"
                 value={customEndDate}
                 onChange={(e) => setCustomEndDate(e.target.value)}
                 className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"

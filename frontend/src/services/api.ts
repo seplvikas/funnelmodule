@@ -163,6 +163,7 @@ export const seplApi = {
   getDashboard: (params?: any) => apiClient.get('/sepl/dashboard', { params }),
   getOwnerStats: (params?: any) => apiClient.get('/sepl/owner-stats', { params }),
   export: (params?: any) => apiClient.get('/sepl/export', { params }),
+  bulkUploadOpportunities: (opportunities: any[]) => apiClient.post('/sepl/bulk-upload', { opportunities }),
   
   // OEM endpoints
   listOEMs: () => apiClient.get('/sepl/oems'),

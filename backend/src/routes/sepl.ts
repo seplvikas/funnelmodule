@@ -25,7 +25,8 @@ import {
   listOICs,
   createOIC,
   updateOIC,
-  deleteOIC
+  deleteOIC,
+  bulkUploadOpportunities
 } from '../controllers/sepl';
 
 const router = express.Router();
@@ -68,6 +69,7 @@ router.delete('/oics/:id', deleteOIC);
 router.get('/', listOpportunities);
 router.get('/:id', getOpportunity);
 router.post('/', createOpportunity);
+router.post('/bulk-upload', bulkUploadOpportunities);
 router.put('/:id', updateOpportunity);
 router.delete('/:id', deleteOpportunity);
 

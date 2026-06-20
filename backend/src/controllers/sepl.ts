@@ -16,6 +16,17 @@ function checkFunnelDatabase(res: Response): boolean {
   return true;
 }
 
+function toTinyIntFlag(value: unknown, fallback = 0): number {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'number') return value === 1 ? 1 : 0;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'y', 'exemption', 'exempt'].includes(normalized)) return 1;
+  if (['0', 'false', 'no', 'n', 'none', 'null', ''].includes(normalized)) return 0;
+  return fallback;
+}
+
 // Check if user can view SEPL
 export async function canViewSEPL(userId: number): Promise<boolean> {
   try {
@@ -1338,6 +1349,195 @@ export async function deleteOIC(req: AuthenticatedRequest, res: Response) {
     res.json({ message: 'OIC deleted successfully' });
   } catch (err) {
     console.error('Error deleting OIC:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+function normalizeBulkDate(value: any): string | null {
+  if (value === null || value === undefined || value === '') return null;
+
+  // Excel serial date number (days since 1899-12-30)
+  if (typeof value === 'number' && isFinite(value)) {
+    const ms = Math.round((value - 25569) * 86400 * 1000);
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+  }
+
+  const s = value.toString().trim();
+  if (!s) return null;
+
+  // YYYY-MM-DD (optionally followed by time)
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (m) {
+    const dd = m[1].padStart(2, '0');
+    const mm = m[2].padStart(2, '0');
+    return `${m[3]}-${mm}-${dd}`;
+  }
+
+  // Fallback: let the JS engine try to parse it
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
+}
+
+// Bulk upload opportunities (Excel import).
+// Accepts the frontend validator's normalized rows (customer_name based, snake_case keys).
+// Derives the NOT NULL columns (title/client_name/reference_number/created_date) the same way
+// createOpportunity does, and maps Yes/No/Exemption flags to the DB tinyint/decimal columns.
+export async function bulkUploadOpportunities(req: AuthenticatedRequest, res: Response) {
+  try {
+    if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+    const userId = getNumericUserId(req);
+    if (userId === null) return res.status(400).json({ error: 'Invalid user id' });
+
+    if (!(await canCreateSEPL(userId))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!checkFunnelDatabase(res)) return;
+
+    const { opportunities } = req.body;
+
+    if (!Array.isArray(opportunities)) {
+      return res.status(400).json({ error: 'Opportunities must be an array' });
+    }
+    if (opportunities.length === 0) {
+      return res.status(400).json({ error: 'No opportunities to upload' });
+    }
+    if (opportunities.length > 500) {
+      return res.status(400).json({ error: 'Maximum 500 rows allowed per upload' });
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const createdByEmail = req.user.email || null;
+
+    const str = (v: any): string => (v === null || v === undefined ? '' : v.toString().trim());
+    const strOrNull = (v: any): string | null => {
+      const s = str(v);
+      return s === '' ? null : s;
+    };
+    const isExemption = (v: any): boolean => str(v).toLowerCase() === 'exemption';
+    const clampTinyInt = (v: any): number => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return 0;
+      return Math.max(0, Math.min(127, Math.trunc(n)));
+    };
+
+    let inserted = 0;
+    let skipped = 0;
+    const errors: Array<{ row: number; field: string; message: string }> = [];
+
+    for (let i = 0; i < opportunities.length; i++) {
+      const rowNo = i + 2; // +2: Excel rows are 1-based and row 1 is the header
+      const opp = opportunities[i] || {};
+
+      try {
+        const customer_name = strOrNull(opp.customer_name);
+        const customer_alias = strOrNull(opp.customer_alias);
+        const tender_name = strOrNull(opp.tender_name);
+        const tender_number = strOrNull(opp.tender_number);
+
+        // At least one identifier is required (mirrors the frontend validator)
+        if (!customer_name && !tender_name && !tender_number) {
+          errors.push({ row: rowNo, field: 'customer_name', message: 'Provide at least one of customer_name, tender_number, or tender_name.' });
+          skipped++;
+          continue;
+        }
+
+        // Derive the NOT NULL columns the same way createOpportunity does
+        const title = customer_name || tender_name || 'Untitled Opportunity';
+        const client_name = customer_name || customer_alias || 'Unknown Client';
+        const reference_number = tender_number || `AUTO-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+        const created_date = normalizeBulkDate(opp.created_date) || today;
+
+        // Skip rows whose tender_number already exists in the database
+        if (tender_number) {
+          const existing: any = await executeQuery(
+            'SELECT id FROM sepl_opportunities WHERE tender_number = ? LIMIT 1',
+            [tender_number]
+          );
+          if (existing && existing.length > 0) {
+            errors.push({ row: rowNo, field: 'tender_number', message: 'Tender number already exists in database.' });
+            skipped++;
+            continue;
+          }
+        }
+
+        const state = strOrNull(opp.state);
+        const city = strOrNull(opp.city);
+        const requirement_type = strOrNull(opp.requirement_type);
+
+        const evNum = Number(opp.estimated_value);
+        const estimated_value = Number.isFinite(evNum) ? evNum : null;
+
+        const eligible = toTinyIntFlag(opp.eligible, 0);
+        const ra = toTinyIntFlag(opp.ra, 0);
+        const epbg = toTinyIntFlag(opp.epbg, 0);
+        const emd_exemption = isExemption(opp.emd) ? 1 : 0;
+        const epbg_value = strOrNull(opp.epbg_value);
+        const tender_fees = strOrNull(opp.tender_fees);
+
+        const contract_year = clampTinyInt(opp.contract_year);
+        const contract_month = clampTinyInt(opp.contract_month);
+
+        const tender_publish_date = normalizeBulkDate(opp.tender_publish_date);
+        const pre_bid_date = normalizeBulkDate(opp.pre_bid_date);
+        const due_date = normalizeBulkDate(opp.due_date);
+        const submission_end_date = normalizeBulkDate(opp.submission_end_date);
+
+        const product_name = strOrNull(opp.product_name);
+        const oem_name = strOrNull(opp.oem_name);
+        const quantity = strOrNull(opp.quantity);
+        const oic_name = strOrNull(opp.oic_name);
+
+        const current_stage = strOrNull(opp.current_stage) || 'New / Identified';
+        const status = strOrNull(opp.status) || 'Bucket-Active';
+        const remarks = strOrNull(opp.remarks);
+
+        await executeQuery(
+          `INSERT INTO sepl_opportunities
+          (title, reference_number, client_name,
+           customer_name, customer_alias, state, city, tender_name, tender_number,
+           requirement_type, eligible, tender_publish_date, pre_bid_date, due_date, submission_end_date,
+           estimated_value, contract_year, contract_month, ra, ra_type, emd, emd_value, emd_exemption, epbg, epbg_value, tender_fees,
+           product_name, oem_name, quantity, oic_name,
+           current_stage, status, remarks, created_date, created_by_id, created_by_email, submission_date)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            title, reference_number, client_name,
+            customer_name, customer_alias, state, city, tender_name, tender_number,
+            requirement_type, eligible, tender_publish_date, pre_bid_date, due_date, submission_end_date,
+            estimated_value, contract_year, contract_month, ra, null, 0, null, emd_exemption, epbg, epbg_value, tender_fees,
+            product_name, oem_name, quantity, oic_name,
+            current_stage, status, remarks, created_date, userId, createdByEmail, today
+          ]
+        );
+
+        inserted++;
+      } catch (err: any) {
+        const message = err?.sqlMessage || (err instanceof Error ? err.message : 'Unknown error');
+        errors.push({ row: rowNo, field: 'database', message });
+        skipped++;
+      }
+    }
+
+    const payload = {
+      inserted,
+      skipped,
+      errors,
+      message: `Inserted ${inserted} opportunit${inserted === 1 ? 'y' : 'ies'}. ${skipped} row(s) skipped.`,
+    };
+
+    if (inserted === 0 && errors.length > 0) {
+      return res.status(400).json({ error: 'No opportunities were uploaded.', ...payload });
+    }
+
+    res.json(payload);
+  } catch (err) {
+    console.error('Error bulk uploading opportunities:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

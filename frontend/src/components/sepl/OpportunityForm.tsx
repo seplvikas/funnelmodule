@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext, useRef } from 'react';
 import { X, Save, Loader, Plus } from 'lucide-react';
 import { seplApi, usersApi } from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
+import { INDIA_STATE_NAMES, getCitiesForState } from '../../data/indiaStatesCities';
 
 // Format date to YYYY-MM-DD for date input
 const formatDateForInput = (dateValue: any): string => {
@@ -16,43 +17,6 @@ const formatDateForInput = (dateValue: any): string => {
     }
   }
   return '';
-};
-
-// Indian States and Cities mapping
-const INDIA_STATES: Record<string, string[]> = {
-  'Andhra Pradesh': ['Hyderabad', 'Visakhapatnam', 'Vijayawada', 'Vijayanagaram', 'Nellore', 'Anantapur', 'Chittoor', 'Cuddapah', 'Guntur', 'Kadapa', 'Kurnool', 'Prakasam', 'Tirupati'],
-  'Arunachal Pradesh': ['Itanagar', 'Tawang', 'Pasighat', 'Tezu'],
-  'Assam': ['Guwahati', 'Silchar', 'Dibrugarh', 'Nagaon', 'Kamrup', 'Barpeta', 'Nagaland'],
-  'Bihar': ['Patna', 'Gaya', 'Bhagalpur', 'Muzaffarpur', 'Darbhanga', 'Bihar Sharif', 'Nalanda'],
-  'Chhattisgarh': ['Raipur', 'Bhilai', 'Durg', 'Raigarh', 'Bilaspur'],
-  'Goa': ['Panaji', 'Margao', 'Vasco da Gama', 'Ponda'],
-  'Gujarat': ['Ahmedabad', 'Surat', 'Vadodara', 'Rajkot', 'Jamnagar', 'Junagadh', 'Bhavnagar', 'Anand', 'Gandhinagar'],
-  'Haryana': ['Faridabad', 'Gurgaon', 'Hisar', 'Rohtak', 'Panipat', 'Karnal', 'Kurukshetra', 'Sonipat', 'Yamunanagar'],
-  'Himachal Pradesh': ['Shimla', 'Kangra', 'Mandi', 'Solan', 'Bilaspur', 'Hamirpur'],
-  'Jharkhand': ['Ranchi', 'Dhanbad', 'Giridih', 'Bokaro', 'Hazaribagh', 'Koderma', 'Dumka'],
-  'Karnataka': ['Bengaluru', 'Mysore', 'Mangalore', 'Hubballi', 'Belgaum', 'Davangere', 'Udupi', 'Tumkur'],
-  'Kerala': ['Kochi', 'Thiruvananthapuram', 'Kozhikode', 'Thrissur', 'Ernakulam', 'Kannur', 'Alappuzha'],
-  'Madhya Pradesh': ['Bhopal', 'Indore', 'Jabalpur', 'Gwalior', 'Ujjain', 'Sagar', 'Rewa', 'Satna'],
-  'Maharashtra': ['Mumbai', 'Pune', 'Nagpur', 'Nashik', 'Aurangabad', 'Kolhapur', 'Latur', 'Solapur', 'Thane'],
-  'Manipur': ['Imphal', 'Thoubal', 'Churachandpur'],
-  'Meghalaya': ['Shillong', 'Tura', 'Jowai'],
-  'Mizoram': ['Aizawl', 'Lunglei', 'Champhai'],
-  'Nagaland': ['Kohima', 'Dimapur', 'Mon', 'Wokha'],
-  'Odisha': ['Bhubaneswar', 'Cuttack', 'Rourkela', 'Berhampur', 'Sambalpur', 'Balasore'],
-  'Punjab': ['Ludhiana', 'Amritsar', 'Chandigarh', 'Patiala', 'Jalandhar', 'Bathinda', 'Hoshiarpur'],
-  'Rajasthan': ['Jaipur', 'Jodhpur', 'Kota', 'Udaipur', 'Bikaner', 'Ajmer', 'Alwar', 'Bhilwara'],
-  'Sikkim': ['Gangtok', 'Siliguri', 'Pelling'],
-  'Tamil Nadu': ['Chennai', 'Coimbatore', 'Madurai', 'Salem', 'Tiruchirappalli', 'Kanyakumari', 'Tiruppur'],
-  'Telangana': ['Hyderabad', 'Warangal', 'Karimnagar', 'Nalgonda', 'Nizamabad'],
-  'Tripura': ['Agartala', 'Udaipur'],
-  'Uttar Pradesh': ['Lucknow', 'Kanpur', 'Agra', 'Varanasi', 'Meerut', 'Ghaziabad', 'Noida', 'Allahabad', 'Indore'],
-  'Uttarakhand': ['Dehradun', 'Nainital', 'Haridwar', 'Almora', 'Rudraprayag'],
-  'West Bengal': ['Kolkata', 'Howrah', 'Darjeeling', 'Siliguri', 'Asansol', 'Durgapur', 'Jalpaiguri'],
-  'Delhi': ['New Delhi', 'Delhi'],
-  'Jammu and Kashmir': ['Srinagar', 'Jammu', 'Leh'],
-  'Ladakh': ['Leh', 'Kargil'],
-  'Chandigarh': ['Chandigarh'],
-  'Puducherry': ['Puducherry', 'Yanam', 'Karikal'],
 };
 
 const REQUIREMENT_TYPES = ['Cloud', 'Software', 'License', 'Hardware', 'Turnkey', 'Manpower/Consulting', 'Hardware with Licenses'];
@@ -324,7 +288,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
       return alreadyAdded ? currentItems : [...currentItems, newTenderRequirementItem];
     });
     setTenderRequirementsTouched(true);
-    setFormData((currentFormData) => ({ ...currentFormData, product_name: '', oem_name: '', quantity: 0 }));
+    setFormData((currentFormData) => ({ ...currentFormData, product_name: '', oem_name: '' }));
   };
 
   const handleAddOIC = async () => {
@@ -541,7 +505,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
         tender_fees: formData.tender_fees,
         product_name: serializedTenderRequirements?.product_name ?? splitTenderProductNames(formData.product_name).join(', '),
         oem_name: serializedTenderRequirements?.oem_name ?? '',
-        quantity: serializedTenderRequirements?.quantity ?? 0,
+        quantity: Number(formData.quantity) || 0,
         oic_name: formData.oic_name,
         remarks: formData.remarks,
         created_date: formData.created_date,
@@ -572,16 +536,20 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
     }
   };
 
-  const stateOptions = (Object.keys(INDIA_STATES) || []) as string[];
-  const cityOptions = ((formData?.state ? INDIA_STATES[formData.state] : []) || []) as string[];
+  const stateOptions = INDIA_STATE_NAMES;
+  const cityOptions = getCitiesForState(formData?.state);
 
   // Ensure arrays are never undefined
   const safeProducts = products || [];
   const safeOems = oems || [];
   const safeOics = oics || [];
   const safeRequirementTypes = REQUIREMENT_TYPES || [];
-  const safeStateOptions = stateOptions || [];
-  const safeCityOptions = cityOptions || [];
+  const safeStateOptions = (formData?.state && !stateOptions.includes(formData.state))
+    ? [formData.state, ...stateOptions]
+    : stateOptions;
+  const safeCityOptions = (formData?.city && !cityOptions.includes(formData.city))
+    ? [formData.city, ...cityOptions]
+    : cityOptions;
   const filteredOICCustomers = (customers || []).filter((customer) =>
     `${customer?.name || ''}`.toLowerCase().includes(newOICCustomerQuery.toLowerCase()) ||
     `${customer?.alias || ''}`.toLowerCase().includes(newOICCustomerQuery.toLowerCase())
@@ -752,6 +720,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Tender Publish Date</label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={formData.tender_publish_date || ''}
                   onChange={(e) => setFormData({ ...formData, tender_publish_date: e.target.value })}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${errors.tender_publish_date ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'}`}
@@ -775,6 +744,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Pre-Bid Date</label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={formData.pre_bid_date || ''}
                   onChange={(e) => setFormData({ ...formData, pre_bid_date: e.target.value })}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${errors.pre_bid_date ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'}`}
@@ -787,6 +757,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                 <label className="block text-sm font-semibold text-gray-700 mb-2">SEPL Due Date</label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={formData.due_date || ''}
                   onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${errors.due_date ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'}`}
@@ -799,6 +770,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Submission End Date</label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={formData.submission_end_date || ''}
                   onChange={(e) => setFormData({ ...formData, submission_end_date: e.target.value })}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 ${errors.submission_end_date ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'}`}
@@ -960,13 +932,13 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
           {/* 3. Tender Requirements */}
           <section className="border-2 border-green-200 rounded-lg p-6 bg-green-50">
             <h3 className="text-lg font-bold text-green-900 mb-4">3. Tender Requirements</h3>
-            <div className="grid grid-cols-1 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div data-field="product_name">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Product / Service</label>
                 <select
                   value={formData.product_name || ''}
                   onChange={(e) => {
-                    setFormData({ ...formData, product_name: e.target.value, oem_name: '', quantity: 0 });
+                    setFormData({ ...formData, product_name: e.target.value, oem_name: '' });
                   }}
                   className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 ${errors.product_name ? 'border-red-500 focus:ring-red-500' : 'border-gray-300'}`}
                 >
@@ -978,6 +950,17 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                 {errors.product_name && (
                   <p className="text-red-500 text-sm mt-1">{errors.product_name}</p>
                 )}
+              </div>
+              <div data-field="quantity">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Quantity</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.quantity || 0}
+                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
+                  placeholder="e.g., 100"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                />
               </div>
             </div>
             <button

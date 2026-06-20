@@ -29,6 +29,7 @@ export function BulkUploadModal({ open, onClose, onUploaded }: BulkUploadModalPr
   const [errors, setErrors] = useState<BulkUploadError[]>([]);
   const [uploading, setUploading] = useState(false);
   const [resultMessage, setResultMessage] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
 
   const hasErrors = errors.length > 0;
 
@@ -47,6 +48,7 @@ export function BulkUploadModal({ open, onClose, onUploaded }: BulkUploadModalPr
     setErrors([]);
     setUploading(false);
     setResultMessage('');
+    setIsDragging(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -95,6 +97,23 @@ export function BulkUploadModal({ open, onClose, onUploaded }: BulkUploadModalPr
       setPreviewRows([]);
       setNormalizedRows([]);
     }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleFileSelected(file);
   };
 
   const uploadFile = async () => {
@@ -175,6 +194,22 @@ export function BulkUploadModal({ open, onClose, onUploaded }: BulkUploadModalPr
             />
 
             {fileName && <span className="text-sm text-gray-600">File: {fileName}</span>}
+          </div>
+
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center cursor-pointer transition ${
+              isDragging
+                ? 'border-indigo-500 bg-indigo-50'
+                : 'border-indigo-200 hover:border-indigo-400 hover:bg-indigo-50/50'
+            }`}
+          >
+            <UploadCloud className="h-8 w-8 text-indigo-500" />
+            <p className="text-sm font-semibold text-gray-700">Drag and drop your Excel file here</p>
+            <p className="text-xs text-gray-500">or click to browse (.xlsx, .xls)</p>
           </div>
 
           {resultMessage && (
