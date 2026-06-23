@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { X, Save, Loader, Plus } from 'lucide-react';
+import { X, Save, Loader, Plus, Upload, CheckCircle, AlertCircle } from 'lucide-react';
 import { seplApi, usersApi } from '../../services/api';
 import { AuthContext } from '../../context/AuthContext';
 import { INDIA_STATE_NAMES, getCitiesForState } from '../../data/indiaStatesCities';
@@ -181,6 +181,11 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
   const [newCustomerAlias, setNewCustomerAlias] = useState('');
   const [currentRemarkInput, setCurrentRemarkInput] = useState('');
   const [originalRemarks, setOriginalRemarks] = useState('');
+  const [boqFile, setBoqFile] = useState<File | null>(null);
+  const [boqFileName, setBoqFileName] = useState('');
+  const [boqUploadError, setBoqUploadError] = useState('');
+  const [boqUploading, setBoqUploading] = useState(false);
+  const boqFileInputRef = useRef<HTMLInputElement>(null);
   const customerDropdownRef = useRef<HTMLDivElement | null>(null);
   const oicCustomerDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -390,6 +395,46 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
     setCurrentRemarkInput('');
   };
 
+  const handleBOQFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setBoqUploadError('');
+
+    if (!file) {
+      setBoqFile(null);
+      setBoqFileName('');
+      return;
+    }
+
+    // Validate file type - only PDF
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setBoqUploadError('Only PDF files are allowed. Please upload a valid PDF file.');
+      setBoqFile(null);
+      setBoqFileName('');
+      if (boqFileInputRef.current) boqFileInputRef.current.value = '';
+      return;
+    }
+
+    // Validate file size - max 10MB
+    const maxSizeInMB = 10;
+    if (file.size > maxSizeInMB * 1024 * 1024) {
+      setBoqUploadError(`File size exceeds ${maxSizeInMB}MB limit. Please upload a smaller file.`);
+      setBoqFile(null);
+      setBoqFileName('');
+      if (boqFileInputRef.current) boqFileInputRef.current.value = '';
+      return;
+    }
+
+    setBoqFile(file);
+    setBoqFileName(file.name);
+  };
+
+  const handleRemoveBOQ = () => {
+    setBoqFile(null);
+    setBoqFileName('');
+    setBoqUploadError('');
+    if (boqFileInputRef.current) boqFileInputRef.current.value = '';
+  };
+
   const focusFieldError = (field: string) => {
     if (!field) return;
     const fieldContainer = document.querySelector(`[data-field="${field}"]`) as HTMLElement | null;
@@ -513,10 +558,30 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
         status: formData.status,
       };
       
-      if (formData.id) {
-        await seplApi.updateOpportunity(formData.id, cleanData);
+      // Handle BOQ file upload for new opportunities
+      let opportunityId = formData.id;
+      if (!formData.id) {
+        const createdOpportunity = await seplApi.createOpportunity(cleanData);
+        opportunityId = createdOpportunity?.data?.data?.id || createdOpportunity?.data?.id;
+        
+        // Upload BOQ file if provided
+        if (boqFile && opportunityId) {
+          try {
+            setBoqUploading(true);
+            const formDataWithFile = new FormData();
+            formDataWithFile.append('file', boqFile);
+            formDataWithFile.append('opportunityId', opportunityId.toString());
+            await seplApi.uploadBOQ(opportunityId, boqFile);
+            setBoqUploading(false);
+          } catch (fileErr) {
+            console.error('BOQ upload error:', fileErr);
+            // Don't block opportunity creation if BOQ upload fails
+            setBoqUploadError('BOQ uploaded but file storage failed. You can upload it later.');
+            setBoqUploading(false);
+          }
+        }
       } else {
-        await seplApi.createOpportunity(cleanData);
+        await seplApi.updateOpportunity(formData.id, cleanData);
       }
       onSave();
     } catch (err) {
@@ -1182,6 +1247,65 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
               </div>
             </div>
           </section>
+
+          {/* 6. Upload BOQ (Only for new opportunities) */}
+          {!formData.id && (
+            <section className="border-2 border-blue-200 rounded-lg p-6 bg-blue-50">
+              <h3 className="text-lg font-bold text-blue-900 mb-4">6. Upload BOQ (Bill of Quantities)</h3>
+              <div className="space-y-4">
+                {/* File Upload Area */}
+                <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 text-center bg-white hover:bg-blue-50 transition">
+                  <input
+                    ref={boqFileInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={handleBOQFileSelect}
+                    className="hidden"
+                  />
+                  {!boqFile ? (
+                    <div
+                      onClick={() => boqFileInputRef.current?.click()}
+                      className="cursor-pointer"
+                    >
+                      <Upload className="w-12 h-12 text-blue-500 mx-auto mb-3" />
+                      <p className="text-sm font-semibold text-gray-800 mb-1">Click to upload BOQ</p>
+                      <p className="text-xs text-gray-600">or drag and drop</p>
+                      <p className="text-xs text-gray-500 mt-2">PDF files only • Max 10MB</p>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-3">
+                      <CheckCircle className="w-8 h-8 text-green-500" />
+                      <div className="text-left">
+                        <p className="text-sm font-semibold text-gray-800">{boqFileName}</p>
+                        <p className="text-xs text-gray-600">{(boqFile.size / 1024).toFixed(2)} KB</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveBOQ}
+                        className="ml-auto p-2 hover:bg-red-100 rounded-lg transition"
+                        title="Remove file"
+                      >
+                        <X className="w-5 h-5 text-red-500" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Error Message */}
+                {boqUploadError && (
+                  <div className="flex gap-2 p-3 bg-red-100 border border-red-300 rounded-lg text-sm text-red-700">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <p>{boqUploadError}</p>
+                  </div>
+                )}
+
+                {/* Info Text */}
+                <p className="text-xs text-gray-600">
+                  💡 Upload your Bill of Quantities (BOQ) document in PDF format. This will be attached to the opportunity for reference.
+                </p>
+              </div>
+            </section>
+          )}
 
           {/* Form Actions */}
           <div className="flex gap-3 pt-4 border-t border-gray-200 bg-white pb-2 mt-4">

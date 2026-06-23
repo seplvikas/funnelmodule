@@ -1,34 +1,34 @@
 import express, { Express, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { initializeDatabase } from './config/database';
+import { createProxyMiddleware } from 'http-proxy-middleware';
+import multer from 'multer';
 import { initializeFunnelDatabase } from './config/funnelDatabase';
-import { initializeEmailService } from './services/email';
-import { initializeAzureEmailService } from './services/azureEmail';
-import { authMiddleware, errorHandler } from './middleware/auth';
-import { startExpiryCheckJob, startCleanupJob } from './jobs/expiryChecker';
-import authRoutes from './routes/auth';
-import productRoutes from './routes/products';
-import taskRoutes from './routes/tasks';
-import notificationRoutes from './routes/notifications';
-import portalNotificationRoutes from './routes/portalNotifications';
-import adminRoutes from './routes/admin';
-import usersRoutes from './routes/users';
-import emdRoutes from './routes/emd';
 import seplRoutes from './routes/sepl';
-import billingProxyRoutes from './routes/billingProxy';
-import hrRoutes from './routes/hr';
-import lettersRoutes from './routes/letters';
 
 dotenv.config();
 
 const app: Express = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5010;
 const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || '100mb';
+const DEMO_BACKEND_URL = process.env.DEMO_BACKEND_URL || 'http://localhost:5001';
+
+// Configure multer for file uploads (memory storage for BOQ files)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF files are allowed'));
+    }
+  }
+});
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: ['http://localhost:3000', 'https://demo.surbhi.net', 'https://funneldemo.surbhi.net'],
   credentials: true,
 }));
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
@@ -36,79 +36,41 @@ app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 
 // Health check
 app.get('/health', (_, res: Response) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', service: 'funnel-service', mode: 'standalone' });
 });
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/portal-notifications', portalNotificationRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/users', usersRoutes);
-app.use('/api/emd', emdRoutes);
-app.use('/api/sepl', seplRoutes);
-app.use('/api/billing', billingProxyRoutes);
-app.use('/api/hr', hrRoutes);
-app.use('/api/letters', lettersRoutes);
+app.use('/api/sepl', (req, res, next) => {
+  // Use multer for BOQ upload endpoint only
+  if (req.path.endsWith('/boq') && req.method === 'POST') {
+    upload.single('file')(req, res, next);
+  } else {
+    next();
+  }
+}, seplRoutes);
 
-// Error handler
-app.use(errorHandler);
+// Proxy admin and users routes to main demo-backend
+app.use('/api/admin', createProxyMiddleware({ target: DEMO_BACKEND_URL, changeOrigin: true, pathRewrite: (path) => '/api/admin' + path }));
+app.use('/api/users', createProxyMiddleware({ target: DEMO_BACKEND_URL, changeOrigin: true, pathRewrite: (path) => '/api/users' + path }));
 
 // Initialize and start server
 async function startServer() {
   try {
-    console.log('\n🚀 Starting Easy Reminder Backend...\n');
-
-    // Initialize database
-    await initializeDatabase();
+    console.log('\n🚀 Starting Funnel Backend (Standalone)...\n');
 
     // Initialize funnel database
     await initializeFunnelDatabase();
 
-    // Initialize email services
-    initializeEmailService();
-    initializeAzureEmailService();
-
-    // Start scheduled jobs
-    startExpiryCheckJob();
-    startCleanupJob();
-
     // Start server
     app.listen(PORT, () => {
-      console.log(`✓ Server running on http://localhost:${PORT}`);
+      console.log(`✓ Funnel backend running on http://localhost:${PORT}`);
       console.log(`\n📋 Available endpoints:`);
-      console.log('  POST   /api/auth/azure-callback  - Authenticate with Azure');
-      console.log('  GET    /api/auth/me              - Get current user');
-      console.log('  GET    /api/products             - List products');
-      console.log('  GET    /api/products/:id         - Get product details');
-      console.log('  POST   /api/products             - Create product');
-      console.log('  PUT    /api/products/:id         - Update product');
-      console.log('  DELETE /api/products/:id         - Delete product');
-      console.log('  GET    /api/products/dashboard-stats - Get dashboard stats\n');
-      console.log('  GET    /api/tasks                - List tasks');
-      console.log('  GET    /api/tasks/:id            - Get task');
-      console.log('  POST   /api/tasks                - Create task');
-      console.log('  PUT    /api/tasks/:id            - Update task');
-      console.log('  DELETE /api/tasks/:id            - Delete task');
-      console.log('  GET    /api/tasks/notifications/all - List task notifications\n');
-      console.log('  GET    /api/emd                  - List EMDs');
-      console.log('  GET    /api/emd/:id              - Get EMD');
-      console.log('  POST   /api/emd                  - Create EMD');
-      console.log('  PUT    /api/emd/:id              - Update EMD');
-      console.log('  DELETE /api/emd/:id              - Delete EMD');
-      console.log('  GET    /api/emd/dashboard        - EMD Dashboard\n');
-      console.log('  GET    /api/epbg                 - List ePBGs');
-      console.log('  GET    /api/epbg/:id             - Get ePBG');
-      console.log('  POST   /api/epbg                 - Create ePBG');
-      console.log('  PUT    /api/epbg/:id             - Update ePBG');
-      console.log('  DELETE /api/epbg/:id             - Delete ePBG');
-      console.log('  GET    /api/epbg/dashboard       - ePBG Dashboard\n');
-      console.log('  GET    /api/notifications        - List all notifications');
-      console.log('  GET    /api/notifications/unseen - Get unseen count');
-      console.log('  POST   /api/notifications/:id/read - Mark notification as read');
-      console.log('  POST   /api/notifications/read-all - Mark all notifications as read\n');
+      console.log('  GET    /health               - Health check');
+      console.log('  GET    /api/sepl             - List SEPL opportunities');
+      console.log('  GET    /api/sepl/:id         - Get SEPL opportunity');
+      console.log('  POST   /api/sepl             - Create SEPL opportunity');
+      console.log('  PUT    /api/sepl/:id         - Update SEPL opportunity');
+      console.log('  DELETE /api/sepl/:id         - Delete SEPL opportunity\n');
     });
   } catch (error) {
     console.error('✗ Failed to start server:', error);

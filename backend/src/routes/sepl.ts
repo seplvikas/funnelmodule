@@ -26,7 +26,8 @@ import {
   createOIC,
   updateOIC,
   deleteOIC,
-  bulkUploadOpportunities
+  bulkUploadOpportunities,
+  uploadBOQ
 } from '../controllers/sepl';
 
 const router = express.Router();
@@ -75,5 +76,8 @@ router.delete('/:id', deleteOpportunity);
 
 // Stage movement
 router.post('/:id/move', moveStage);
+
+// BOQ Upload
+router.post('/:id/boq', uploadBOQ);
 
 export default router;

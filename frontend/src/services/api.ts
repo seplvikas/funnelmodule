@@ -164,6 +164,13 @@ export const seplApi = {
   getOwnerStats: (params?: any) => apiClient.get('/sepl/owner-stats', { params }),
   export: (params?: any) => apiClient.get('/sepl/export', { params }),
   bulkUploadOpportunities: (opportunities: any[]) => apiClient.post('/sepl/bulk-upload', { opportunities }),
+  uploadBOQ: (opportunityId: number, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiClient.post(`/sepl/${opportunityId}/boq`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   
   // OEM endpoints
   listOEMs: () => apiClient.get('/sepl/oems'),

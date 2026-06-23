@@ -1541,3 +1541,71 @@ export async function bulkUploadOpportunities(req: AuthenticatedRequest, res: Re
     res.status(500).json({ error: 'Internal server error' });
   }
 }
+
+// Upload BOQ (Bill of Quantities) file for an opportunity
+export async function uploadBOQ(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    if (!checkFunnelDatabase(res)) return;
+
+    const { id } = req.params;
+    const opportunityId = Number(id);
+
+    if (!opportunityId || isNaN(opportunityId)) {
+      res.status(400).json({ error: 'Invalid opportunity ID' });
+      return;
+    }
+
+    // Verify opportunity exists
+    const opportunity: any = await executeFunnelQuery(
+      'SELECT id FROM sepl_opportunities WHERE id = ?',
+      [opportunityId]
+    );
+
+    if (!opportunity || opportunity.length === 0) {
+      res.status(404).json({ error: 'Opportunity not found' });
+      return;
+    }
+
+    // Check if file exists in request
+    if (!req.file) {
+      res.status(400).json({ error: 'No file provided' });
+      return;
+    }
+
+    const file = req.file;
+
+    // Validate file type
+    if (file.mimetype !== 'application/pdf' && !file.originalname.toLowerCase().endsWith('.pdf')) {
+      res.status(400).json({ error: 'Only PDF files are allowed' });
+      return;
+    }
+
+    // Validate file size (10MB max)
+    const maxSizeInMB = 10;
+    if (file.size > maxSizeInMB * 1024 * 1024) {
+      res.status(400).json({ error: `File size exceeds ${maxSizeInMB}MB limit` });
+      return;
+    }
+
+    // Store file reference in database (filename and timestamp)
+    // Note: In production, you would store the file path or S3 URL here
+    const timestamp = new Date().toISOString();
+    const boqReference = `${opportunityId}-${Date.now()}-${file.originalname}`;
+
+    // Update opportunity with BOQ reference
+    await executeFunnelQuery(
+      'UPDATE sepl_opportunities SET boq_file_name = ?, boq_uploaded_at = ? WHERE id = ?',
+      [boqReference, timestamp, opportunityId]
+    );
+
+    res.json({
+      message: 'BOQ file uploaded successfully',
+      fileName: file.originalname,
+      fileSize: file.size,
+      uploadedAt: timestamp,
+      opportunityId
+    });
+  } catch (err) {
+    console.error('Error uploading BOQ:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
