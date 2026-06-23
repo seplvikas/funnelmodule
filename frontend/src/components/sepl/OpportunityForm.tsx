@@ -643,7 +643,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
             <h3 className="text-lg font-bold text-blue-900 mb-4">1. Customer Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div data-field="customer_name">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Customer Name</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Organisation Name</label>
                 <div className="relative" ref={customerDropdownRef}>
                   <input
                     type="text"
@@ -690,7 +690,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                 )}
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Customer Alias</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Sub Organization Name</label>
                 <input
                   type="text"
                   value={formData.customer_alias || ''}
@@ -1149,7 +1149,7 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">OIC Name *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Point of Contact *</label>
                   <input
                     type="text"
                     value={newOICName}
@@ -1207,51 +1207,10 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
             </div>
           )}
 
-          {/* 5. Remarks */}
-          <section className="border-2 border-orange-200 rounded-lg p-6 bg-orange-50">
-            <h3 className="text-lg font-bold text-orange-900 mb-4">5. Remarks / Notes</h3>
-            <div className="space-y-4">
-              {/* Existing remarks display */}
-              {formData.remarks && (
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Previous Remarks</label>
-                  <div 
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"
-                  >
-                    {formData.remarks.replace(/<br>/g, '\n')}
-                  </div>
-                </div>
-              )}
-              
-              {/* New remark input */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Add New Remark (Optional)</label>
-                <div className="flex gap-2">
-                  <textarea
-                    value={currentRemarkInput}
-                    onChange={(e) => setCurrentRemarkInput(e.target.value)}
-                    placeholder="Type your remark here..."
-                    rows={3}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddRemark}
-                    disabled={!currentRemarkInput.trim()}
-                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed h-fit"
-                  >
-                    Add Remark
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">Your user ID and timestamp will be automatically added to the remark.</p>
-              </div>
-            </div>
-          </section>
-
-          {/* 6. Upload BOQ (Only for new opportunities) */}
+          {/* 5. Upload BOQ (Only for new opportunities) */}
           {!formData.id && (
             <section className="border-2 border-blue-200 rounded-lg p-6 bg-blue-50">
-              <h3 className="text-lg font-bold text-blue-900 mb-4">6. Upload BOQ (Bill of Quantities)</h3>
+              <h3 className="text-lg font-bold text-blue-900 mb-4">5. Upload BOQ (Bill of Quantities)</h3>
               <div className="space-y-4">
                 {/* File Upload Area */}
                 <div className="border-2 border-dashed border-blue-300 rounded-lg p-6 text-center bg-white hover:bg-blue-50 transition">
@@ -1306,6 +1265,47 @@ export function OpportunityForm({ opportunity, onSave, onClose }: OpportunityFor
               </div>
             </section>
           )}
+
+          {/* 6. Remarks */}
+          <section className="border-2 border-orange-200 rounded-lg p-6 bg-orange-50">
+            <h3 className="text-lg font-bold text-orange-900 mb-4">6. Remarks / Notes</h3>
+            <div className="space-y-4">
+              {/* Existing remarks display */}
+              {formData.remarks && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Previous Remarks</label>
+                  <div 
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-700 max-h-40 overflow-y-auto whitespace-pre-wrap"
+                  >
+                    {formData.remarks.replace(/<br>/g, '\n')}
+                  </div>
+                </div>
+              )}
+              
+              {/* New remark input */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Add New Remark (Optional)</label>
+                <div className="flex gap-2">
+                  <textarea
+                    value={currentRemarkInput}
+                    onChange={(e) => setCurrentRemarkInput(e.target.value)}
+                    placeholder="Type your remark here..."
+                    rows={3}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddRemark}
+                    disabled={!currentRemarkInput.trim()}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed h-fit"
+                  >
+                    Add Remark
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Your user ID and timestamp will be automatically added to the remark.</p>
+              </div>
+            </div>
+          </section>
 
           {/* Form Actions */}
           <div className="flex gap-3 pt-4 border-t border-gray-200 bg-white pb-2 mt-4">
