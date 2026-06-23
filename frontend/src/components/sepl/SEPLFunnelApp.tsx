@@ -15,12 +15,9 @@ export function SEPLFunnelApp() {
   const { getPortalState, setPortalState } = useNavigation();
   const navigate = useNavigate();
   
-  // Check if user is vikas@surbhi.net
-  const isVikasUser = user?.email?.toLowerCase() === 'vikas@surbhi.net';
-  
-  // Try to restore previous page from state, default to 'home' for Vikas, 'funnel' for others
+  // Try to restore previous page from state, default to the funnel dashboard for all funnel users.
   const savedState = getPortalState('sepl-funnel');
-  const defaultPage = isVikasUser ? 'home' : 'funnel';
+  const defaultPage = 'home';
   const [activePage, setActivePage] = useState(savedState?.activePage || defaultPage);
 
   // Save active page whenever it changes
@@ -34,12 +31,11 @@ export function SEPLFunnelApp() {
   };
 
   const handleDashboard = () => {
-    navigate('/?page=dashboard');
+    window.location.href = 'https://demo.surbhi.net/';
   };
 
   const menuItems = [
-    // Only show Dashboard menu for vikas@surbhi.net
-    ...(isVikasUser ? [{ id: 'home', label: 'Dashboard', icon: BarChart3 }] : []),
+    { id: 'home', label: 'Dashboard', icon: BarChart3 },
     { id: 'funnel', label: 'Sales Funnel', icon: TrendingUp },
     { id: 'oems', label: 'Manage OEMs', icon: Building2 },
     { id: 'products', label: 'Manage Products', icon: Package },
@@ -50,10 +46,6 @@ export function SEPLFunnelApp() {
   const renderPage = () => {
     switch (activePage) {
       case 'home':
-        // Only allow vikas@surbhi.net to access Dashboard page
-        if (!isVikasUser) {
-          return <SEPLFunnel />; // Redirect to Sales Funnel for other users
-        }
         return <SEPLHome />;
       case 'funnel':
         return <SEPLFunnel />;
@@ -66,8 +58,7 @@ export function SEPLFunnelApp() {
       case 'project-oic':
         return <ManageProjectOICs />;
       default:
-        // Default to Sales Funnel for non-Vikas users, Dashboard for Vikas
-        return isVikasUser ? <SEPLHome /> : <SEPLFunnel />;
+        return <SEPLHome />;
     }
   };
 
